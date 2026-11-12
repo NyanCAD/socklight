@@ -7,12 +7,21 @@ port convention is in `docs/iq-convention.md`.
 
 ## Install
 
-socklight needs VACASK's Python extension (`vacask`), and OpenVAF-reloaded (`openvaf-r`) to
-compile the Verilog-A helpers. Neither is on PyPI.
+```sh
+pip install socklight
+```
+
+Wheels exist for Linux (x86_64, aarch64; CPython 3.10–3.14) and for Pyodide 314
+(Python 3.14, the Pyodide marimo ships), where `micropip.install("socklight")` works the same.
+They pull in VACASK's Python extension (`vacask`).
+
+Building from source needs a C compiler and CMake. The Verilog-A helpers are compiled with
+the `openvaf-r` that `vacask-bin` (a build requirement) ships; pass `-DOPENVAF_COMPILER=...`
+through `CMAKE_ARGS` to use another one. For a development install:
 
 ```sh
-pip install /path/to/vacask-*.whl                 # or build it from a VACASK checkout
-PATH=/path/to/openvaf-r-dir:$PATH pip install .
+pip install vacask-bin scikit-build-core pytest
+pip install -e . --no-build-isolation
 ```
 
 `socklight.osdi` is built against the Python headers only and does not link libpython. It

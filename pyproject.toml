@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.10", "vacask-bin>=0.3.4.dev5"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "sax's optical model library on numpy, exposed to VACASK as OSDI devices"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-dependencies = ["numpy"]
+dependencies = ["numpy", "vacask>=0.3.4.dev5"]
 
 [tool.scikit-build]
 cmake.version = ">=3.18"
@@ -21,6 +21,12 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.cibuildwheel]
+# Linux (x86_64, aarch64) and Pyodide; VACASK has no musllinux wheels, and its
+# manylinux wheels are manylinux_2_34, so the tests need that image too.
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
+skip = "*-musllinux_*"
+manylinux-x86_64-image = "manylinux_2_34"
+manylinux-aarch64-image = "manylinux_2_34"
 # Only the tests are copied, not pyproject.toml: its pytest `pythonpath = ["src"]`
 # would import the source tree instead of the installed wheel.
 test-sources = ["tests"]
@@ -28,10 +34,8 @@ test-requires = ["pytest"]
 test-command = "python -m pytest -m 'not native' -q tests"
 
 [tool.cibuildwheel.pyodide]
-# WebAssembly (Pyodide/Emscripten), as VACASK's Pyodide wheel: socklight.osdi is a
-# side module and va/*.va are compiled to side modules by an openvaf-r with the
-# wasm32-unknown-emscripten target (OPENVAF_COMPILER). The host strip would remove
-# the dylink.0 section a side module needs. The tests simulate with VACASK's own
-# Pyodide wheel, which is not on PyPI: ci/build-pyodide.sh adds it to the test
-# requirements (CIBW_TEST_REQUIRES_PYODIDE) from VACASK_PYODIDE_WHEEL.
-environment = { CMAKE_ARGS = "-DOPENVAF_COMPILER=$OPENVAF_COMPILER", SKBUILD_INSTALL_STRIP = "false" }
+# Pyodide 314 (Python 3.14, pyemscripten_2026_0, Emscripten 5.0.3), the Pyodide
+# marimo ships. socklight.osdi is a side module whose Py* symbols resolve against
+# the Pyodide main module; va/*.va are compiled to side modules by vacask-bin's
+# openvaf-r. The host strip would remove the dylink.0 section a side module needs.
+environment = { SKBUILD_INSTALL_STRIP = "false" }
