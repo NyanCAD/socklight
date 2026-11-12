@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -11,7 +11,10 @@ license = { text = "Apache-2.0" }
 dependencies = ["numpy"]
 
 [tool.scikit-build]
+cmake.version = ">=3.18"
 wheel.packages = ["src/socklight"]
+# `pip install -e .` builds socklight.osdi into src/socklight/ (see CMakeLists.txt).
+editable.mode = "inplace"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

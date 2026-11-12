@@ -5,3 +5,14 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+# scikit-build-core editable.mode = "inplace" configures and builds in the source tree
+/.cmake/
+/.ninja_deps
+/.ninja_log
+/.skbuild-info.json
+/CMakeCache.txt
+/CMakeFiles/
+/CMakeInit.txt
+/build.ninja
+/cmake_install.cmake
+/src/socklight/socklight.osdi
