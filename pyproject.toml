@@ -1,0 +1,18 @@
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "socklight"
+version = "0.1.0"
+description = "sax's optical model library on numpy, exposed to VACASK as OSDI devices"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["numpy"]
+
+[tool.scikit-build]
+wheel.packages = ["src/socklight"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,7 @@
+socklight
+Copyright (c) socklight contributors
+
+This product includes software derived from sax (https://github.com/flaport/sax,
+as developed at gdsfactory/sax), commit c22ed91, licensed under the Apache License,
+Version 2.0. See LICENSE and VENDORED.md. Vendored files are modified: jax is replaced
+by numpy.
