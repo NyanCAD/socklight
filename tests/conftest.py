@@ -46,6 +46,16 @@ def bad(x=0.0):
     return {("o1", "o2"): 0.5, ("o2", "o1"): 0.5}
 
 
+def optional(y=None):
+    t = 0.5 if y is None else 0.1 * y
+    return {("o1", "o2"): t, ("o2", "o1"): t}
+
+
+def nonfinite(x=0.0):
+    t = float("nan") if x > 0 else 0.5
+    return {("o1", "o2"): t, ("o2", "o1"): t}
+
+
 NPORTS_MANY = 20
 NPARAMS_MANY = 100
 MANY_PORTS = [f"o{k:02d}" for k in range(NPORTS_MANY)]
@@ -75,6 +85,8 @@ TEST_MODELS = {
     "t.m:sorted_ports": sorted_ports,
     "t.m:f": two_port(0.5),
     "t.m:bad": bad,
+    "t.m:nonfinite": nonfinite,
+    "t.m:optional": optional,
     "t.m:many": many,  # noqa: F821  (defined by exec above)
 }
 
@@ -125,13 +137,22 @@ def elaborate(netlist: str):
     return cir, (tab, compiler, s)
 
 
-def _op(netlist: str) -> dict[str, float]:
-    from vacask import Analysis, PTAnalysis, PTSave, Status
+def analyse(cir, sweep: dict | None = None, name: str = "op1") -> dict:
+    """Runs an operating point on an elaborated circuit, optionally under a VACASK sweep.
+
+    ``sweep`` holds the sweep's parameters, e.g. ``{"instance": "xa", "parameter": "wl",
+    "values": [1.5, 1.55]}``. Returns ``{vector: numpy array}``, one entry per point.
+    """
+    from vacask import PV, Analysis, PTAnalysis, PTSave, PTSweep, Status
     from vacask.rawfile import rawread
 
     s = Status()
-    cir, _keep = elaborate(netlist)
-    desc = PTAnalysis("op1", "op")  # the analysis refers to it: keep it alive until run() is done
+    desc = PTAnalysis(name, "op")  # the analysis refers to it: keep it alive until run() is done
+    if sweep:
+        sw = PTSweep("sweep1")
+        for key, value in sweep.items():
+            sw.add(PV(key, value))
+        desc.add(sw)
     analysis = Analysis.create(desc, cir, s)
     if not analysis:
         raise VacaskError(s.message())
@@ -139,8 +160,13 @@ def _op(netlist: str) -> dict[str, float]:
     ok, _ = analysis.run(s)
     if not ok:
         raise VacaskError(s.message())
-    res = rawread("op1.raw").get()
-    return {name: float(res[name][0]) for name in res.names}
+    res = rawread(name + ".raw").get(sweeps=1 if sweep else 0)
+    return {vec: res[vec] for vec in res.names}
+
+
+def _op(netlist: str) -> dict[str, float]:
+    cir, _keep = elaborate(netlist)
+    return {vec: float(v[0]) for vec, v in analyse(cir).items()}
 
 
 @pytest.fixture

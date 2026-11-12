@@ -8,7 +8,7 @@ import numpy as np
 
 from . import registry
 
-__all__ = ["evaluate", "set_load_error", "snapshot"]
+__all__ = ["evaluate", "record_error", "set_load_error", "snapshot"]
 
 def _int(v: object) -> int:
     if isinstance(v, float) and not v.is_integer():
@@ -42,6 +42,9 @@ def _flatten(s: dict, ports: tuple[str, ...], name: str) -> list[float]:
                 msg = f"{name} entry {(i, j)} has {arr.size} elements, expected a scalar"
                 raise ValueError(msg)
             z = complex(arr.reshape(-1)[0])
+            if not (np.isfinite(z.real) and np.isfinite(z.imag)):
+                msg = f"{name} entry {(i, j)} is not finite"
+                raise ValueError(msg)
             out.extend((z.real, z.imag))
     return out
 
@@ -66,3 +69,8 @@ def evaluate(name: str, values: dict) -> list[float]:
 
 def set_load_error(msg: str) -> None:
     registry._load_error = msg
+
+
+def record_error(name: str, message: str) -> None:
+    """A setup failure found on the C side (no Python traceback): make last_error() report it."""
+    registry._last_error = {"model": name, "params": {}, "traceback": message}

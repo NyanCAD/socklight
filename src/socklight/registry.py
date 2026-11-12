@@ -90,6 +90,21 @@ def _probe(name: str, fn: Callable) -> ModelSpec:
     return ModelSpec(name, ports, tuple(params), takes_wl)
 
 
+def _difference(old: ModelSpec, new: ModelSpec) -> str:
+    """What makes ``new`` a different signature from ``old``."""
+    if old.ports != new.ports:
+        return f"ports changed from {old.ports} to {new.ports}"
+    names = [p.name for p in old.params], [p.name for p in new.params]
+    if names[0] != names[1]:
+        return f"parameters changed from {names[0]} to {names[1]}"
+    for a, b in zip(old.params, new.params):
+        if a.kind != b.kind:
+            return f"parameter {a.name!r} kind changed from {a.kind} to {b.kind}"
+        if a.default != b.default:
+            return f"parameter {a.name!r} default changed from {a.default!r} to {b.default!r}"
+    return "the signature changed"
+
+
 def register(name: str, fn: Callable) -> None:
     """Register ``fn`` as model ``name`` (``package.module:callable``)."""
     if not _NAME_RE.match(name):
@@ -105,7 +120,7 @@ def register(name: str, fn: Callable) -> None:
         raise RuntimeError(msg)
     spec = _probe(name, fn)
     if _frozen and _models[name][0] != spec:
-        msg = f"socklight.osdi already loaded; the signature of {name!r} changed; restart to apply"
+        msg = f"socklight.osdi already loaded; {name!r}: {_difference(_models[name][0], spec)}; restart to apply"
         raise RuntimeError(msg)
     _models[name] = (spec, fn)
 

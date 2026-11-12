@@ -40,6 +40,9 @@ Layout sl_layouts[SOCKLIGHT_MAX_MODELS];
     static void *access_##k(void *i, void *m, uint32_t id, uint32_t f) {                             \
         return sl_access(k, i, m, id, f);                                                            \
     }                                                                                                \
+    static void setup_model_##k(void *h, void *m, OsdiSimParas *sp, OsdiInitInfo *r) {                \
+        sl_setup_model(k, h, m, sp, r);                                                              \
+    }                                                                                                \
     static uint32_t given_model_##k(void *m, uint32_t id) { return sl_given_flag_model(k, m, id); }  \
     static uint32_t given_inst_##k(void *i, uint32_t id) { return sl_given_flag_instance(k, i, id); } \
     static void setup_##k(void *h, void *i, void *m, double t, uint32_t nt, OsdiSimParas *sp,        \
@@ -56,6 +59,7 @@ Layout sl_layouts[SOCKLIGHT_MAX_MODELS];
 
 typedef struct {
     void *(*access)(void *, void *, uint32_t, uint32_t);
+    void (*setup_model)(void *, void *, OsdiSimParas *, OsdiInitInfo *);
     uint32_t (*given_model)(void *, uint32_t);
     uint32_t (*given_inst)(void *, uint32_t);
     void (*setup)(void *, void *, void *, double, uint32_t, OsdiSimParas *, OsdiInitInfo *);
@@ -64,7 +68,7 @@ typedef struct {
     void (*jac)(void *, void *);
 } SlotFns;
 
-#define SL_SLOT(k) {access_##k, given_model_##k, given_inst_##k, setup_##k, eval_##k, resid_##k, jac_##k},
+#define SL_SLOT(k) {access_##k, setup_model_##k, given_model_##k, given_inst_##k, setup_##k, eval_##k, resid_##k, jac_##k},
 static const SlotFns SLOT_FNS[SOCKLIGHT_MAX_MODELS] = {
 #include "sl_slots.inc"
 };
@@ -156,7 +160,7 @@ static int fill(uint32_t k, const SlModel *sm, char *err, size_t errlen) {
         .instance_size = L->instance_size,
         .model_size = L->model_size,
         .access = f->access,
-        .setup_model = sl_setup_model,
+        .setup_model = f->setup_model,
         .setup_instance = f->setup,
         .eval = f->eval,
         .load_residual_resist = f->resid,

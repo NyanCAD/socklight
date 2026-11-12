@@ -1,9 +1,11 @@
 /* The generic device.  See device.h. */
 #include <complex.h>
+#include <math.h>
 #include <stdalign.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "device.h"
 
@@ -97,10 +99,18 @@ void *sl_access(uint32_t slot, void *inst, void *model, uint32_t id, uint32_t fl
     if (!p.base || id >= L->m) {
         return NULL;
     }
-    if (flags & ACCESS_FLAG_SET) {
+    void *ptr = param_ptr(L, p, id);
+    if ((flags & ACCESS_FLAG_SET) && !is_given(p, id)) {
         AT(p.base, p.given, uint32_t *)[id / 32] |= 1u << (id % 32);
+        if (L->params[id].kind == SL_STR) {
+            /* VACASK sets through this pointer and then, the parameter being
+             * given now, frees the old string: hand it a copy of the default
+             * (or model value) we filled in, which is not ours to free. */
+            char **sp = ptr;
+            *sp = *sp ? strdup(*sp) : NULL;
+        }
     }
-    return param_ptr(L, p, id);
+    return ptr;
 }
 
 uint32_t sl_given_flag_model(uint32_t slot, void *model, uint32_t id) {
@@ -198,59 +208,119 @@ static void init_ok(OsdiInitInfo *res) {
     res->errors = NULL;
 }
 
-void sl_setup_model(void *handle, void *model, OsdiSimParas *sim, OsdiInitInfo *res) {
+/* A process-lifetime copy of `s`, shared by equal strings.  An instance whose
+ * str parameter is not given points at one: VACASK frees only strings it
+ * marked given, and the model's own string may be freed by a later write. */
+static const char *intern(const char *s) {
+    typedef struct Interned {
+        struct Interned *next;
+        char str[];
+    } Interned;
+    static Interned *head;
+    for (Interned *e = head; e; e = e->next) {
+        if (!strcmp(e->str, s)) {
+            return e->str;
+        }
+    }
+    size_t len = strlen(s) + 1;
+    Interned *e = malloc(sizeof *e + len);
+    if (!e) {
+        return NULL;
+    }
+    memcpy(e->str, s, len);
+    e->next = head;
+    head = e;
+    return e->str;
+}
+
+/* Ungiven model parameters hold the signature default, so that VACASK reads a
+ * real value back through access() (sweeps save and restore that way). */
+void sl_setup_model(uint32_t slot, void *handle, void *model, OsdiSimParas *sim, OsdiInitInfo *res) {
     (void)handle;
-    (void)model;
     (void)sim;
     init_ok(res);
+    const Layout *L = &sl_layouts[slot];
+    const Params mp = model_params(L, model);
+    for (uint32_t j = 0; j < L->m; j++) {
+        if (is_given(mp, j)) {
+            continue;
+        }
+        if (L->params[j].kind == SL_STR) {
+            *(char **)param_ptr(L, mp, j) = L->params[j].sdefault;
+        } else {
+            *(double *)param_ptr(L, mp, j) = L->params[j].rdefault;
+        }
+    }
+}
+
+static void fail(const Layout *L, OsdiInitInfo *res, const char *why, bool record) {
+    fprintf(stderr, "socklight.osdi: setup of %s failed: %s\n", L->name, why);
+    if (record) {
+        sl_bridge_record_error(L->name, why);
+    }
+    res->flags = EVAL_RET_FLAG_FATAL;
 }
 
 void sl_setup_instance(uint32_t slot, void *handle, void *inst, void *model, double temperature,
                        uint32_t num_terminals, OsdiSimParas *sim, OsdiInitInfo *res) {
     (void)handle;
     (void)temperature;
-    (void)num_terminals;
     (void)sim;
     init_ok(res);
     const Layout *L = &sl_layouts[slot];
+    char why[1024];
+    if (num_terminals != 2 * L->n) {
+        snprintf(why, sizeof why, "connected %u of %u terminals", num_terminals, 2 * L->n);
+        fail(L, res, why, true);
+        return;
+    }
     const Params ip = inst_params(L, inst), mp = model_params(L, model);
     const size_t nout = 2 * (size_t)L->n * L->n;
     SlValue *vals = calloc(L->m ? L->m : 1, sizeof *vals);
     double *s = malloc(nout * sizeof *s);
-    const char *why = NULL;
     uint32_t nvals = 0;
     if (!vals || !s) {
-        why = "out of memory";
+        fail(L, res, "out of memory", true);
         goto done;
     }
-    /* Each parameter: instance given, else model given, else omitted (the
-     * model's own signature default applies). */
+    /* An ungiven instance parameter takes the model's value (given on the model
+     * line, else the default) without becoming given.  Every value goes to the
+     * model except an opt parameter that is still None (NaN). */
     for (uint32_t j = 0; j < L->m; j++) {
-        const Params *src = is_given(ip, j) ? &ip : is_given(mp, j) ? &mp : NULL;
-        if (!src) {
+        const uint8_t kind = L->params[j].kind;
+        void *dst = param_ptr(L, ip, j);
+        if (!is_given(ip, j)) {
+            if (kind == SL_STR) {
+                const char *m = *(char **)param_ptr(L, mp, j);
+                if (!(*(const char **)dst = intern(m ? m : ""))) {
+                    fail(L, res, "out of memory", true);
+                    goto done;
+                }
+            } else {
+                *(double *)dst = *(double *)param_ptr(L, mp, j);
+            }
+        }
+        if (kind == SL_OPT && isnan(*(double *)dst)) {
             continue;
         }
         SlValue *v = &vals[nvals++];
         v->name = L->params[j].name;
-        v->kind = L->params[j].kind;
-        if (v->kind == SL_STR) {
-            v->str = *(char **)param_ptr(L, *src, j);
+        v->kind = kind;
+        if (kind == SL_STR) {
+            v->str = *(char **)dst;
         } else {
-            v->real = *(double *)param_ptr(L, *src, j);
+            v->real = *(double *)dst;
         }
     }
-    if (sl_bridge_evaluate(L->name, vals, nvals, s, nout)) {
-        why = "the model raised; socklight.last_error() has the traceback";
+    if (sl_bridge_evaluate(L->name, vals, nvals, s, nout, why, sizeof why)) {
+        /* already in socklight.last_error() */
+        fail(L, res, why, false);
         goto done;
     }
     if (sl_s_to_g(L->n, s, AT(inst, L->i_g, double *))) {
-        why = "I + S is singular, so the model has no admittance";
+        fail(L, res, "I + S is singular, so the model has no admittance", true);
     }
 done:
-    if (why) {
-        fprintf(stderr, "socklight.osdi: setup of %s failed: %s\n", L->name, why);
-        res->flags = EVAL_RET_FLAG_FATAL;
-    }
     free(vals);
     free(s);
 }

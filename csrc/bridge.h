@@ -13,8 +13,10 @@
 enum { SL_REAL = 0, SL_INT = 1, SL_STR = 2, SL_OPT = 3 };
 
 typedef struct {
-    char *name;   /* original case, for calling back into Python */
-    uint8_t kind; /* SL_REAL, SL_INT, SL_STR or SL_OPT */
+    char *name;     /* original case, for calling back into Python */
+    uint8_t kind;   /* SL_REAL, SL_INT, SL_STR or SL_OPT */
+    double rdefault; /* signature default; NaN for an opt parameter (None) */
+    char *sdefault; /* SL_STR: signature default, kept for the life of the process */
 } SlParam;
 
 typedef struct {
@@ -41,9 +43,14 @@ int sl_bridge_python_running(void);
 int sl_bridge_snapshot(SlModel **models, uint32_t *count, char *err, size_t errlen);
 
 /* evaluate(model, {name: value}) into `out` (`nout` doubles: interleaved
- * re/im of S, row-major over the snapshot's port order).  Returns 0, or -1 if
- * the call raised (the bridge has then recorded socklight.last_error()). */
-int sl_bridge_evaluate(const char *model, const SlValue *vals, uint32_t nvals, double *out, size_t nout);
+ * re/im of S, row-major over the snapshot's port order).  Returns 0, or -1
+ * with a one-line message in `err`; socklight.last_error() then describes the
+ * failure (recorded by the bridge for a Python exception, by us otherwise). */
+int sl_bridge_evaluate(const char *model, const SlValue *vals, uint32_t nvals, double *out, size_t nout,
+                       char *err, size_t errlen);
+
+/* Records a C-side setup failure of `model` so socklight.last_error() returns it. */
+void sl_bridge_record_error(const char *model, const char *msg);
 
 /* set_load_error(msg), so socklight.load_error() returns it. */
 void sl_bridge_set_load_error(const char *msg);

@@ -169,3 +169,21 @@ def test_many_ports_and_params(run_op, vacask_mod_dir):
 def test_load_error_none_when_ok(run_op, vacask_mod_dir):
     run_op(deck(vacask_mod_dir, {"f": "'t.m:f'"}, bench("a", "f", ("o1", "o2"))))
     assert socklight.load_error() is None
+
+
+def test_missing_terminals_fail(run_op, vacask_mod_dir):
+    nodes = " ".join(f"n{k}" for k in range(6))
+    net = deck(vacask_mod_dir, {"mmi": f"'{MMI2X2}'"}, f"xa ({nodes}) mmi\nvai (n0 0) vsrc dc=1")
+    with pytest.raises(VacaskError):
+        run_op(net)
+    err = socklight.last_error()
+    assert err["model"] == MMI2X2
+    assert "connected 6 of 8 terminals" in err["traceback"]
+
+
+def test_non_finite_s_fails(run_op, vacask_mod_dir):
+    with pytest.raises(VacaskError):
+        run_op(deck(vacask_mod_dir, {"nf": "'t.m:nonfinite'"}, bench("a", "nf", ("o1", "o2"), "x=1")))
+    err = socklight.last_error()
+    assert err["model"] == "t.m:nonfinite"
+    assert "('o1', 'o2') is not finite" in err["traceback"] or "('o2', 'o1') is not finite" in err["traceback"]

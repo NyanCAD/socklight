@@ -11,7 +11,11 @@
  *   Model:    rvals[m] double, svals[m] char*, given[ceil(m/32)] u32
  *
  * Parameter j lives in rvals[j] (real, int and opt parameters, all declared
- * PARA_TY_REAL) or svals[j] (str parameters, PARA_TY_STR).
+ * PARA_TY_REAL) or svals[j] (str parameters, PARA_TY_STR).  Every slot holds a
+ * real value whether given or not (VACASK reads values back through access()
+ * to save and restore them around sweeps): setup_model fills ungiven model
+ * parameters with the signature default (NaN for an opt parameter that is
+ * None), setup_instance fills ungiven instance parameters from the model.
  */
 #pragma once
 
@@ -44,6 +48,7 @@ extern Layout sl_layouts[];
 void *sl_access(uint32_t slot, void *inst, void *model, uint32_t id, uint32_t flags);
 uint32_t sl_given_flag_model(uint32_t slot, void *model, uint32_t id);
 uint32_t sl_given_flag_instance(uint32_t slot, void *inst, uint32_t id);
+void sl_setup_model(uint32_t slot, void *handle, void *model, OsdiSimParas *sim, OsdiInitInfo *res);
 void sl_setup_instance(uint32_t slot, void *handle, void *inst, void *model, double temperature,
                        uint32_t num_terminals, OsdiSimParas *sim, OsdiInitInfo *res);
 uint32_t sl_eval(uint32_t slot, void *handle, void *inst, void *model, OsdiSimInfo *info);
@@ -51,7 +56,6 @@ void sl_load_residual_resist(uint32_t slot, void *inst, void *model, double *dst
 void sl_load_jacobian_resist(uint32_t slot, void *inst, void *model);
 
 /* Slot-independent callbacks. */
-void sl_setup_model(void *handle, void *model, OsdiSimParas *sim, OsdiInitInfo *res);
 void sl_load_residual_react(void *inst, void *model, double *dst);
 void sl_load_jacobian_react(void *inst, void *model, double alpha);
 

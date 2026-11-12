@@ -153,6 +153,42 @@ def test_frozen_changed_signature_raises():
         socklight.register("a.b:f", g)
 
 
+def _ab(wl=1.55, x=1.0):
+    return {("a", "b"): 1.0}
+
+
+def _ac(wl=1.55, x=1.0):
+    return {("a", "c"): 1.0}
+
+
+def _ab_y(wl=1.55, y=1.0):
+    return {("a", "b"): 1.0}
+
+
+def _ab_str(wl=1.55, x="s"):
+    return {("a", "b"): 1.0}
+
+
+def _ab_2(wl=1.55, x=2.0):
+    return {("a", "b"): 1.0}
+
+
+@pytest.mark.parametrize(
+    "fn,match",
+    [
+        (_ac, r"ports changed from \('a', 'b'\) to \('a', 'c'\)"),
+        (_ab_y, r"parameters changed from \['wl', 'x'\] to \['wl', 'y'\]"),
+        (_ab_str, r"parameter 'x' kind changed from real to str"),
+        (_ab_2, r"parameter 'x' default changed from 1.0 to 2.0"),
+    ],
+)
+def test_frozen_changed_signature_names_the_field(fn, match):
+    socklight.register("a.b:f", _ab)
+    _bridge.snapshot()
+    with pytest.raises(RuntimeError, match=match):
+        socklight.register("a.b:f", fn)
+
+
 def test_frozen_same_signature_replaces():
     def f(wl=1.55):
         return {("a", "b"): 1.0}

@@ -2,6 +2,8 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,8 +90,21 @@ static int parse_model(PyObject *entry, SlModel *out) {
         if (!PyArg_ParseTuple(PyTuple_GET_ITEM(params, j), "UUO", &pname, &kind, &dflt)) {
             return -1;
         }
-        if (!(out->params[j].name = dup_str(pname)) || parse_kind(kind, &out->params[j].kind)) {
+        SlParam *par = &out->params[j];
+        if (!(par->name = dup_str(pname)) || parse_kind(kind, &par->kind)) {
             return -1;
+        }
+        if (par->kind == SL_STR) {
+            if (!(par->sdefault = dup_str(dflt))) {
+                return -1;
+            }
+        } else if (dflt == Py_None) {
+            par->rdefault = NAN; /* opt: omitted from evaluate() unless given */
+        } else {
+            par->rdefault = PyFloat_AsDouble(dflt);
+            if (par->rdefault == -1.0 && PyErr_Occurred()) {
+                return -1;
+            }
         }
     }
     return 0;
@@ -129,9 +144,17 @@ done:
     return rc;
 }
 
-int sl_bridge_evaluate(const char *model, const SlValue *vals, uint32_t nvals, double *out, size_t nout) {
+static void record_error(PyObject *mod, const char *model, const char *msg) {
+    PyObject *res = mod ? PyObject_CallMethod(mod, "record_error", "ss", model, msg) : NULL;
+    Py_XDECREF(res);
+    PyErr_Clear();
+}
+
+int sl_bridge_evaluate(const char *model, const SlValue *vals, uint32_t nvals, double *out, size_t nout,
+                       char *err, size_t errlen) {
     PyGILState_STATE gil = PyGILState_Ensure();
     int rc = -1;
+    bool recorded = false; /* the bridge records last_error for exceptions in evaluate() */
     PyObject *mod = NULL, *values = NULL, *res = NULL, *seq = NULL;
     if (!(mod = bridge_module()) || !(values = PyDict_New())) {
         goto done;
@@ -145,8 +168,11 @@ int sl_bridge_evaluate(const char *model, const SlValue *vals, uint32_t nvals, d
         }
         Py_DECREF(v);
     }
-    if (!(res = PyObject_CallMethod(mod, "evaluate", "sO", model, values)) ||
-        !(seq = PySequence_Fast(res, "evaluate() must return a list"))) {
+    if (!(res = PyObject_CallMethod(mod, "evaluate", "sO", model, values))) {
+        recorded = true;
+        goto done;
+    }
+    if (!(seq = PySequence_Fast(res, "evaluate() must return a list"))) {
         goto done;
     }
     if ((size_t)PySequence_Fast_GET_SIZE(seq) != nout) {
@@ -162,8 +188,12 @@ int sl_bridge_evaluate(const char *model, const SlValue *vals, uint32_t nvals, d
     }
     rc = 0;
 done:
-    /* The bridge recorded socklight.last_error() before re-raising. */
-    PyErr_Clear();
+    if (rc) {
+        exc_message(recorded ? "the model raised" : "evaluate() failed", err, errlen);
+        if (!recorded) {
+            record_error(mod, model, err);
+        }
+    }
     Py_XDECREF(seq);
     Py_XDECREF(res);
     Py_XDECREF(values);
@@ -179,5 +209,13 @@ void sl_bridge_set_load_error(const char *msg) {
     Py_XDECREF(res);
     Py_XDECREF(mod);
     PyErr_Clear();
+    PyGILState_Release(gil);
+}
+
+void sl_bridge_record_error(const char *model, const char *msg) {
+    PyGILState_STATE gil = PyGILState_Ensure();
+    PyObject *mod = bridge_module();
+    record_error(mod, model, msg);
+    Py_XDECREF(mod);
     PyGILState_Release(gil);
 }
