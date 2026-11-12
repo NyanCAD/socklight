@@ -95,6 +95,35 @@ snapshots the registry once per process.
   default, two names or parameters that collide case-insensitively, and a probe call that
   fails.
 
+## From a gdsfactory netlist
+
+`socklight.netlist.netlist_to_deck` turns a flat netlist, as `Component.get_netlist()` returns it,
+into a deck. It imports neither gdsfactory nor sax.
+
+```python
+from socklight.netlist import netlist_to_deck
+
+socklight.register_models("cspdk.si220", PDK.models)  # before any deck loads socklight.osdi
+deck = netlist_to_deck(c.get_netlist(), "cspdk.si220", params={"wl": 1.31})
+i, q = deck.external["o1"]  # nodes of external port o1: append a source here
+netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src optical_source\n' \
+    + f"s1 ({i} {q}) src p=1\n"  # ...and terms or photodetectors on the other external ports
+```
+
+- `models` is a prefix (component `coupler` uses `"cspdk.si220:coupler"`) or a mapping from
+  component to registered name. A component without a registered model raises `KeyError`.
+- An instance's parameters are its `settings` with `info` merged over them, as `sax.circuit`
+  does. Keys that are not parameters of the model are left out and listed in `deck.dropped`
+  (layout-only settings such as `width` or `npoints` are normal there). `None` means "use the
+  model's default".
+- `params` go to every instance whose model has that parameter, unless the instance sets it
+  itself: the instance wins.
+- Each net is one node pair `n<k>_i n<k>_q`. An external port `p` is `p_i p_q` (sanitized if `p`
+  is not a VACASK identifier). An instance port that is on no net and not external is
+  terminated with `optical_term`. The deck always loads it as model `optical_term`, so appended
+  lines can use it.
+- The deck has no sources, detectors or analysis. Append them.
+
 ## Errors
 
 VACASK reports only error codes for OSDI failures, so socklight records the details on the
