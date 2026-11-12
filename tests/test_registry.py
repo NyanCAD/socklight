@@ -189,3 +189,25 @@ def test_load_error():
     assert socklight.load_error() is None
     _bridge.set_load_error("bad")
     assert socklight.load_error() == "bad"
+
+
+def test_unknown_param_raises_and_sets_last_error():
+    with pytest.raises(ValueError, match="bogus"):
+        _bridge.evaluate("socklight.models:mmi2x2", {"wl": 1.55, "bogus": 1.0})
+    assert "bogus" in socklight.last_error()["traceback"]
+
+
+def test_array_entry_raises():
+    # bypass the probe (which would also see the array) to exercise evaluate directly
+    registry._models["a.b:arr"] = (registry.ModelSpec("a.b:arr", ("a", "b"), (), False), lambda: {("a", "b"): np.array([1.0, 2.0])})
+    with pytest.raises(ValueError, match="scalar"):
+        _bridge.evaluate("a.b:arr", {})
+
+
+def test_non_integral_int_raises():
+    def f(wl=1.55, n=3):
+        return {("a", "b"): 1.0}
+
+    socklight.register("a.b:f", f)
+    with pytest.raises(ValueError, match="integer"):
+        _bridge.evaluate("a.b:f", {"n": 4.5})

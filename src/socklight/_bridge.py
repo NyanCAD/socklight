@@ -10,7 +10,14 @@ from . import registry
 
 __all__ = ["evaluate", "set_load_error", "snapshot"]
 
-_CAST = {"real": float, "int": int, "str": str, "opt": float}
+def _int(v: object) -> int:
+    if isinstance(v, float) and not v.is_integer():
+        msg = f"integer parameter got non-integral value {v!r}"
+        raise ValueError(msg)
+    return int(v)
+
+
+_CAST = {"real": float, "int": _int, "str": str, "opt": float}
 
 
 def snapshot() -> list[tuple[str, tuple[str, ...], tuple[tuple[str, str, object], ...]]]:
@@ -30,7 +37,11 @@ def _flatten(s: dict, ports: tuple[str, ...], name: str) -> list[float]:
     out: list[float] = []
     for i in ports:
         for j in ports:
-            z = complex(np.asarray(s.get((i, j), 0.0)).reshape(-1)[0])
+            arr = np.asarray(s.get((i, j), 0.0))
+            if arr.size != 1:
+                msg = f"{name} entry {(i, j)} has {arr.size} elements, expected a scalar"
+                raise ValueError(msg)
+            z = complex(arr.reshape(-1)[0])
             out.extend((z.real, z.imag))
     return out
 
@@ -39,6 +50,10 @@ def evaluate(name: str, values: dict) -> list[float]:
     """S-matrix of model ``name`` as interleaved ``[re, im]``, row-major over its ports."""
     try:
         spec, fn = registry._models[name]
+        unknown = sorted(set(values) - {p.name for p in spec.params})
+        if unknown:
+            msg = f"{name}: unknown parameters {unknown}"
+            raise ValueError(msg)
         kwargs = {}
         for p in spec.params:
             if p.name in values:
