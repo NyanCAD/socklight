@@ -2,7 +2,7 @@
 
 Run in an environment that has circulax, jax, sax and cspdk (not socklight):
 
-    ~/code/gdsfactory/cspdk/.venv/bin/python tools/circulax_heater.py
+    python tools/circulax_heater.py   # in a venv with jax, sax, circulax and cspdk
 
 Builds coupler -> (cspdk ThermalPhaseShifter | straight) -> coupler with a matched
 source and 1 ohm terminations, sweeps the heater voltage, prints the max abs
