@@ -29,3 +29,4 @@ Every vendored file begins with the `# MODIFIED:` header line.
 
 Docstring examples still refer to `sax.models.*`, `jax` plotting etc.; they are not executed.
 10. `_sax/ports.py`: default `PORT_NAMING_STRATEGY` changed from `"inout"` to `"optical"` (o1, o2, ...), as gdsfactory/cspdk use.
+11. `models/mmis.py`: `amplitude = max_amplitude * spectral_response / spectral_response.max()` becomes `amplitude = max_amplitude * spectral_response`. With a scalar `wl` the division cancelled the Gaussian dispersion entirely; sax's intent (peak at `wl0`) is kept by evaluating at `wl0`. The reference values (`tests/data/sax_reference.json`, from `tools/reference_values.py`) evaluate sax with `wl=[wl, wl0]` and take index 0, so they match.

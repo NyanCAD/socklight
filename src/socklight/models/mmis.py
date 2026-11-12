@@ -258,7 +258,7 @@ def _mmi_amp(
     # Gaussian response in frequency domain
     spectral_response = jnp.exp(-((f - f0) ** 2) / (2 * sigma**2))
     # Apply loss to amplitude, not power
-    amplitude = max_amplitude * spectral_response / spectral_response.max()
+    amplitude = max_amplitude * spectral_response
     return jnp.asarray(amplitude)
 
 
