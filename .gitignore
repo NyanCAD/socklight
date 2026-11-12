@@ -16,3 +16,4 @@ dist/
 /build.ninja
 /cmake_install.cmake
 /src/socklight/socklight.osdi
+/src/socklight/va/

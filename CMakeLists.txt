@@ -50,3 +50,27 @@ if(CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
 endif()
 
 install(TARGETS socklight_osdi LIBRARY DESTINATION socklight)
+
+# Verilog-A helpers (va/*.va), compiled with OpenVAF-reloaded into socklight/va/<name>.osdi.
+set(OPENVAF_COMPILER "openvaf-r" CACHE STRING "openvaf-r, the OpenVAF compiler used for va/*.va (name on PATH or full path)")
+find_program(_openvaf NAMES "${OPENVAF_COMPILER}" REQUIRED)
+if(CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(_va_out "${CMAKE_SOURCE_DIR}/src/socklight/va")
+else()
+  set(_va_out "${CMAKE_CURRENT_BINARY_DIR}/va")
+endif()
+file(MAKE_DIRECTORY "${_va_out}")
+set(_va_osdi "")
+foreach(_name optical_source optical_term photodetector)
+  set(_src "${CMAKE_CURRENT_SOURCE_DIR}/va/${_name}.va")
+  set(_dst "${_va_out}/${_name}.osdi")
+  add_custom_command(
+    OUTPUT "${_dst}"
+    COMMAND "${_openvaf}" "${_src}" -o "${_dst}"
+    DEPENDS "${_src}"
+    COMMENT "OpenVAF ${_name}.va"
+    VERBATIM)
+  list(APPEND _va_osdi "${_dst}")
+endforeach()
+add_custom_target(socklight_va ALL DEPENDS ${_va_osdi})
+install(FILES ${_va_osdi} DESTINATION socklight/va)

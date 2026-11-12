@@ -1,0 +1,14 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Matched optical termination: the 1 ohm reference resistance (see
+// docs/iq-convention.md) from each of the I and Q rails to ground.
+module optical_term(o_i, o_q);
+    inout o_i, o_q;
+    electrical o_i, o_q;
+
+    analog begin
+        I(o_i) <+ V(o_i);
+        I(o_q) <+ V(o_q);
+    end
+endmodule

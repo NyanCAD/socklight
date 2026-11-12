@@ -13,4 +13,9 @@ def osdi_path() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "socklight.osdi")
 
 
-__all__ = ["last_error", "load_error", "osdi_path", "register", "register_models"]
+def va_path(name: str) -> str:
+    """Absolute path of a Verilog-A helper's compiled OSDI, e.g. ``va_path("optical_source")``."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "va", f"{name}.osdi")
+
+
+__all__ = ["last_error", "load_error", "osdi_path", "register", "register_models", "va_path"]

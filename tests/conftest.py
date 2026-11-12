@@ -28,8 +28,8 @@ def sorted_ports(wl=1.55, mode="a", n=1):
     """Ports declared out of order; ``mode``/``n`` exercise str and int parameters."""
     t = 0.5 if mode == "a" else 0.4
     return {
-        ("in0", "out0"): t, ("out0", "in0"): t,
-        ("in0", "out1"): 0.25j * n, ("out1", "in0"): 0.25j * n,
+        ("out1", "in0"): 0.25j * n, ("in0", "out1"): 0.25j * n,
+        ("out0", "in0"): t, ("in0", "out0"): t,
     }
 
 

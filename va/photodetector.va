@@ -1,0 +1,19 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Square-law photodetector: matched 1 ohm on each optical rail, and a photocurrent
+// responsivity * (V_i^2 + V_q^2) + dark_current leaving the device at terminal p
+// (into the external circuit) and returning at n.
+module photodetector(o_i, o_q, p, n);
+    inout o_i, o_q, p, n;
+    electrical o_i, o_q, p, n;
+
+    (*desc= "Responsivity", type="instance", units = "A/W"*)  parameter real responsivity = 1.0;
+    (*desc= "Dark current", type="instance", units = "A"*)    parameter real dark_current = 0.0;
+
+    analog begin
+        I(o_i) <+ V(o_i);
+        I(o_q) <+ V(o_q);
+        I(n, p) <+ responsivity * (V(o_i) * V(o_i) + V(o_q) * V(o_q)) + dark_current;
+    end
+endmodule

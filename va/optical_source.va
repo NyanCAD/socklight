@@ -1,0 +1,22 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Optical source on one I/Q port (see docs/iq-convention.md): launches incident
+// power p at phase `phase` through a matched 1 ohm reference, a Thevenin source
+// of 2*sqrt(p)*exp(j*phase) behind 1 ohm on each rail, so |a|^2 = p into a
+// matched load.
+module optical_source(o_i, o_q);
+    inout o_i, o_q;
+    electrical o_i, o_q;
+
+    (*desc= "Incident optical power", type="instance", units = "W"*) parameter real p = 1.0 from [0:inf);
+    (*desc= "Launch phase", type="instance", units = "rad"*)         parameter real phase = 0.0;
+
+    real amp;
+
+    analog begin
+        amp = 2.0 * sqrt(p);
+        I(o_i) <+ V(o_i) - amp * cos(phase);
+        I(o_q) <+ V(o_q) - amp * sin(phase);
+    end
+endmodule
