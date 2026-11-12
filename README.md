@@ -123,20 +123,38 @@ netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src 
   in both `params` and `variables` raises `ValueError`. `deck.variables` lists them; declare each
   one before elaboration or VACASK will not resolve it:
 
+  socklight runs inside a Python process, and VACASK's Python API ignores a deck's `control`
+  block, so declare and sweep the variable through the API:
+
   ```python
+  from vacask import (Circuit, OpenvafCompiler, Parser, ParserTables, Status, Value,
+                      Analysis, PTAnalysis, PTSave, PTSweep, PV, simulator)
+
   deck = netlist_to_deck(c.get_netlist(), "cspdk.si220", variables=("wl",))
-  # ...append sources and detectors, then the control block:
-  control = """
-  control
-    var wl=1.55
-    sweep s variable="wl" values=[1.50, 1.52, 1.55, 1.58, 1.60]
-    analysis op1 op
-  endc
-  """
+  text = deck.text + "..."  # append sources and detectors
+
+  simulator.setup()
+  s = Status()
+  tab = ParserTables("models")
+  Parser(tab).parseNetlistString(text)
+  tab.verify(s)
+  compiler = OpenvafCompiler()
+  cir = Circuit(tab, compiler, s)
+  cir.setVariable("wl", Value(1.55))           # before elaborate
+  cir.elaborate([], "__topdef__", "__topinst__", status=s)
+
+  desc = PTAnalysis("op1", "op")
+  sweep = PTSweep("s")
+  sweep.add(PV("variable", "wl"))
+  sweep.add(PV("values", [1.50, 1.52, 1.55, 1.58, 1.60]))
+  desc.add(sweep)
+  analysis = Analysis.create(desc, cir, s)
+  analysis.add(PTSave("default"))
+  analysis.run(s)                               # writes op1.raw, one point per wavelength
   ```
 
-  Through the Python API there is no control block: call `circuit.setVariable("wl", Value(1.55))`
-  before `circuit.elaborate`, then sweep with `PV("variable", "wl")` (see `tests/conftest.py`).
+  Keep `tab`, `compiler` and `desc` referenced until the run is done: with vacask 0.3.4.dev6 the
+  circuit and the analysis do not keep them alive themselves.
 - Each net is one node pair `n<k>_i n<k>_q`. An external port `p` is `p_i p_q` (sanitized if `p`
   is not a VACASK identifier). An instance port that is on no net and not external is
   terminated with `optical_term`. The deck always loads it as model `optical_term`, so appended
