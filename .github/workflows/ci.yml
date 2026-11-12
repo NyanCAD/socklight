@@ -40,6 +40,7 @@ jobs:
       - uses: pypa/cibuildwheel@v4.3.5
         env:
           CIBW_PLATFORM: pyodide
+          CIBW_BUILD: cp314-pyodide_wasm32
       # PyPI accepts the PEP 783 tag only: fail here rather than mid-release.
       - name: Check the platform tag
         run: |

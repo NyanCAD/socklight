@@ -76,7 +76,10 @@ endif()
 message(STATUS "OpenVAF compiler: ${OPENVAF_COMPILER}")
 find_program(_openvaf NAMES "${OPENVAF_COMPILER}" REQUIRED NO_CMAKE_FIND_ROOT_PATH)
 # Extra openvaf-r arguments for the target, and the environment it runs in.
-set(_openvaf_target "")
+# openvaf-r defaults to --target_cpu native: models built on one machine can then
+# die with "Illegal instruction" on another. Wheels must run anywhere.
+set(OPENVAF_TARGET_CPU "generic" CACHE STRING "CPU the va/*.va models are compiled for (openvaf-r --target_cpu; 'native' for local builds)")
+set(_openvaf_target --target_cpu "${OPENVAF_TARGET_CPU}")
 set(_openvaf_launcher "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   # As VACASK's Pyodide build: the models become WebAssembly side modules,
