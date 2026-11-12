@@ -12,6 +12,7 @@ Every vendored file begins with the `# MODIFIED:` header line.
 | `_sax/ports.py` | `src/sax/ports.py` |
 | `_sax/_compat.py` | `reciprocal` from `src/sax/s.py`; type aliases from `src/sax/saxtypes` reduced to plain annotations |
 | `_sax/__init__.py`, `models/__init__.py` | new; `STDLIB` is the 18-model table |
+| `compat/_sax.py` (`interpolate_xarray` and its helpers) | `src/sax/interpolation.py` of sax 0.18.2, on numpy; `_map_coordinates` follows `jax.scipy.ndimage.map_coordinates` (jax 0.8.3, Apache-2.0) for `order=1, mode="nearest"` |
 
 `factories.py` and `probes.py` are vendored and importable but not in `STDLIB`.
 

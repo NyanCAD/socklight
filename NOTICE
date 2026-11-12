@@ -5,3 +5,7 @@ This product includes software derived from sax (https://github.com/flaport/sax,
 as developed at gdsfactory/sax), commit c22ed91, licensed under the Apache License,
 Version 2.0. See LICENSE and VENDORED.md. Vendored files are modified: jax is replaced
 by numpy.
+
+socklight.compat's interpolate_xarray is ported to numpy from sax 0.18.2
+(src/sax/interpolation.py) and from jax 0.8.3's jax.scipy.ndimage.map_coordinates
+(https://github.com/jax-ml/jax, Apache License, Version 2.0).
