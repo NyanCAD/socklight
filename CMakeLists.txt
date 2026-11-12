@@ -41,6 +41,12 @@ set_target_properties(socklight_osdi PROPERTIES
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(socklight_osdi PRIVATE -Wall -Wextra)
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # Pyodide: a WebAssembly side module, loaded by VACASK's dlopen like the native
+  # library. The Py* symbols stay undefined and resolve against the Pyodide main
+  # module, like any extension module's.
+  target_link_options(socklight_osdi PRIVATE -sSIDE_MODULE=1)
+endif()
 
 # scikit-build-core's editable.mode = "inplace" configures in the source
 # directory: put the library next to the package sources.
@@ -53,7 +59,27 @@ install(TARGETS socklight_osdi LIBRARY DESTINATION socklight)
 
 # Verilog-A helpers (va/*.va), compiled with OpenVAF-reloaded into socklight/va/<name>.osdi.
 set(OPENVAF_COMPILER "openvaf-r" CACHE STRING "openvaf-r, the OpenVAF compiler used for va/*.va (name on PATH or full path)")
-find_program(_openvaf NAMES "${OPENVAF_COMPILER}" REQUIRED)
+find_program(_openvaf NAMES "${OPENVAF_COMPILER}" REQUIRED NO_CMAKE_FIND_ROOT_PATH)
+# Extra openvaf-r arguments for the target, and the environment it runs in.
+set(_openvaf_target "")
+set(_openvaf_launcher "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # As VACASK's Pyodide build: the models become WebAssembly side modules,
+  # compiled for wasm32-unknown-emscripten and linked by the wasm-ld of the
+  # Emscripten SDK that builds socklight.osdi.
+  execute_process(COMMAND "${_openvaf}" --supported-targets
+    OUTPUT_VARIABLE _targets RESULT_VARIABLE _res)
+  if(NOT _res EQUAL 0 OR NOT _targets MATCHES "wasm32-unknown-emscripten")
+    message(FATAL_ERROR "${_openvaf} cannot compile for WebAssembly (no wasm32-unknown-emscripten target)")
+  endif()
+  get_filename_component(_cc_dir "${CMAKE_C_COMPILER}" DIRECTORY)
+  find_program(WASM_LD wasm-ld
+    HINTS "${EMSCRIPTEN_ROOT_PATH}/../bin" "$ENV{EMSDK}/upstream/bin" "${_cc_dir}/../bin"
+    NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  message(STATUS "WebAssembly linker for va/*.va: ${WASM_LD}")
+  set(_openvaf_target --target wasm32-unknown-emscripten)
+  set(_openvaf_launcher "${CMAKE_COMMAND}" -E env "OPENVAF_WASM_LD=${WASM_LD}")
+endif()
 if(CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(_va_out "${CMAKE_SOURCE_DIR}/src/socklight/va")
 else()
@@ -66,7 +92,7 @@ foreach(_name optical_source optical_term photodetector heater)
   set(_dst "${_va_out}/${_name}.osdi")
   add_custom_command(
     OUTPUT "${_dst}"
-    COMMAND "${_openvaf}" "${_src}" -o "${_dst}"
+    COMMAND ${_openvaf_launcher} "${_openvaf}" ${_openvaf_target} "${_src}" -o "${_dst}"
     DEPENDS "${_src}"
     COMMENT "OpenVAF ${_name}.va"
     VERBATIM)

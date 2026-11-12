@@ -17,3 +17,5 @@ dist/
 /cmake_install.cmake
 /src/socklight/socklight.osdi
 /src/socklight/va/
+/wheelhouse/
+/.pyodide_build/

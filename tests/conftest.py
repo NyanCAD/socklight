@@ -85,6 +85,11 @@ def osdi_models():
         socklight.register(name, fn)
 
 
+def pytest_configure(config):
+    # Registered here, not in pyproject.toml: the Pyodide wheel test copies only tests/.
+    config.addinivalue_line("markers", "native: needs a native interpreter (subprocess, a jax venv); skipped in Pyodide")
+
+
 def pytest_collection_modifyitems(config, items):
     items.sort(key=lambda item: "run_op" in getattr(item, "fixturenames", ()))
 

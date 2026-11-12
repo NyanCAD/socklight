@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# VACASK (Python extension) and openvaf-r are not on PyPI: both come from the
+# artifacts of a VACASK CI run (pepijndevos/VACASK). openvaf-r of the Linux
+# x86_64 build has the wasm32-unknown-emscripten target. Artifacts expire (this
+# run's on 2027-02-10): point VACASK_RUN_ID at a newer run then.
+env:
+  VACASK_REPO: pepijndevos/VACASK
+  VACASK_RUN_ID: "43094918687"
+
+jobs:
+  native:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Fetch VACASK's wheels
+        uses: actions/download-artifact@v6
+        with:
+          name: wheels-ubuntu-24.04
+          path: vacask-wheels
+          repository: ${{ env.VACASK_REPO }}
+          run-id: ${{ env.VACASK_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Fetch OpenVAF-Reloaded
+        uses: actions/download-artifact@v6
+        with:
+          name: openvaf-ubuntu-24.04
+          path: openvaf
+          repository: ${{ env.VACASK_REPO }}
+          run-id: ${{ env.VACASK_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      # openvaf-r is linked against the LLVM 21 shared library (as in VACASK's CI).
+      - name: Install OpenVAF-Reloaded
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libllvm21 ninja-build
+          chmod +x openvaf/openvaf-r
+          echo "$GITHUB_WORKSPACE/openvaf" >> "$GITHUB_PATH"
+
+      # Editable (in-place) install: socklight.osdi and va/*.osdi land in
+      # src/socklight/, which the tests import (pytest pythonpath = src).
+      - name: Install
+        run: |
+          python -m pip install --find-links vacask-wheels vacask pytest
+          python -m pip install -e .
+
+      - name: Test
+        run: python -m pytest tests -v
+
+  pyodide:
+    # The same job as VACASK's Pyodide wheel: cibuildwheel, Emscripten 4.0.9
+    # (pyemscripten_2025_0, Python 3.13). socklight.osdi is a side module whose
+    # Py* symbols resolve against the Pyodide main module; va/*.va become side
+    # modules linked by the SDK's wasm-ld. The tests run in Pyodide with VACASK's
+    # Pyodide wheel (ci/build-pyodide.sh).
+    name: Pyodide
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Fetch VACASK's Pyodide wheel
+        uses: actions/download-artifact@v6
+        with:
+          name: pyodide-wheels
+          path: vacask-wheels
+          repository: ${{ env.VACASK_REPO }}
+          run-id: ${{ env.VACASK_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Fetch OpenVAF-Reloaded
+        uses: actions/download-artifact@v6
+        with:
+          name: openvaf-ubuntu-24.04
+          path: openvaf
+          repository: ${{ env.VACASK_REPO }}
+          run-id: ${{ env.VACASK_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Install OpenVAF-Reloaded
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libllvm21 ninja-build
+          chmod +x openvaf/openvaf-r
+          openvaf/openvaf-r --supported-targets | grep wasm32-unknown-emscripten
+          echo "OPENVAF_COMPILER=$GITHUB_WORKSPACE/openvaf/openvaf-r" >> "$GITHUB_ENV"
+
+      - name: Build and test the wheel
+        run: |
+          python -m pip install cibuildwheel==3.2.1
+          CIBUILDWHEEL=cibuildwheel ci/build-pyodide.sh vacask-wheels/*.whl
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: pyodide-wheels
+          path: wheelhouse/*.whl

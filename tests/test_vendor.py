@@ -49,11 +49,13 @@ def test_ideal_four_port_conserves_power(name):
         assert abs(_out_power(s, src) - 1) < 1e-12, (name, src)
 
 
+@pytest.mark.native
 def test_no_jax_in_sys_modules_after_import():
     code = "import socklight, socklight.models, sys; assert not any(m == 'jax' or m.startswith('jax.') for m in sys.modules)"
     subprocess.run([sys.executable, "-c", code], check=True, env={**os.environ, "PYTHONPATH": SRC})
 
 
+@pytest.mark.native
 def test_no_jax_even_when_installed():
     py = os.environ.get("SOCKLIGHT_JAX_PYTHON", os.path.expanduser("~/code/gdsfactory/cspdk/.venv/bin/python"))
     if not os.path.exists(py):

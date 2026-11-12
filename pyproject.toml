@@ -19,3 +19,19 @@ editable.mode = "inplace"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.cibuildwheel]
+# Only the tests are copied, not pyproject.toml: its pytest `pythonpath = ["src"]`
+# would import the source tree instead of the installed wheel.
+test-sources = ["tests"]
+test-requires = ["pytest"]
+test-command = "python -m pytest -m 'not native' -q tests"
+
+[tool.cibuildwheel.pyodide]
+# WebAssembly (Pyodide/Emscripten), as VACASK's Pyodide wheel: socklight.osdi is a
+# side module and va/*.va are compiled to side modules by an openvaf-r with the
+# wasm32-unknown-emscripten target (OPENVAF_COMPILER). The host strip would remove
+# the dylink.0 section a side module needs. The tests simulate with VACASK's own
+# Pyodide wheel, which is not on PyPI: ci/build-pyodide.sh adds it to the test
+# requirements (CIBW_TEST_REQUIRES_PYODIDE) from VACASK_PYODIDE_WHEEL.
+environment = { CMAKE_ARGS = "-DOPENVAF_COMPILER=$OPENVAF_COMPILER", SKBUILD_INSTALL_STRIP = "false" }
