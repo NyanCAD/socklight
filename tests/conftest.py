@@ -116,9 +116,10 @@ def vacask_mod_dir():
     return os.path.join(os.path.dirname(vacask.__file__), "mod")
 
 
-def elaborate(netlist: str, variables: dict | None = None):
+def elaborate(netlist: str, variables: dict | None = None, options: dict | None = None):
     """Parses and elaborates ``netlist``. ``variables`` declares circuit variables (what a
-    ``var`` line in a control block does under the vacask CLI) before elaboration."""
+    ``var`` line in a control block does under the vacask CLI) before elaboration;
+    ``options`` sets simulator options (an ``options`` line), e.g. ``{"reltol": 1e-9}``."""
     from vacask import Circuit, OpenvafCompiler, Parser, ParserTables, Status, Value
     from vacask import simulator as sim
 
@@ -136,6 +137,9 @@ def elaborate(netlist: str, variables: dict | None = None):
     for name, value in (variables or {}).items():
         if not cir.setVariable(name, Value(value))[0]:
             raise VacaskError(f"cannot set circuit variable {name!r}")
+    for name, value in (options or {}).items():
+        if not cir.setOption(name, Value(value))[0]:
+            raise VacaskError(f"cannot set simulator option {name!r}")
     if not cir.elaborate([], "__topdef__", "__topinst__", status=s):
         raise VacaskError(s.message())
     # The circuit refers to the parser tables and the compiler but does not keep them alive.

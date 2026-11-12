@@ -6,6 +6,7 @@ import cmath
 import math
 import re
 
+import numpy as np
 import pytest
 from test_osdi import wave
 
@@ -339,3 +340,155 @@ def test_identifier_sanitizing():
     for i, q in deck.external.values():
         assert ident.match(i) and ident.match(q)
     assert len(set(deck.external.values())) == 2
+
+
+# ── Verilog-A devices (va_devices) ────────────────────────────────────────────
+
+from socklight.netlist import VA_DEVICES  # noqa: E402
+
+
+def heater_mzi(**heater_settings) -> dict:
+    """The MZI with arm ``top`` a heater component (mapped to socklight's heater.va) and
+    ``bot`` a stdlib straight; couplers 50/50."""
+    nl = mzi(coupling=0.5, l_bot=320.0)
+    nl["instances"]["top"] = {
+        "component": "straight_heater_meander",
+        "settings": {"length": 320.0, "cross_section": "strip", "voltage": 0.0, **heater_settings},
+        "info": {},
+    }
+    nl["instances"]["bot"]["settings"]["neff"] = 2.38
+    return nl
+
+
+VA = {"straight_heater_meander": "heater"}
+
+
+def test_va_device_table_matches_sources():
+    import pathlib
+
+    src = pathlib.Path(__file__).resolve().parent.parent / "va"
+    if not src.is_dir():
+        pytest.skip("va/ sources not available (installed-wheel test)")
+    for name, dev in VA_DEVICES.items():
+        text = (src / f"{name}.va").read_text()
+        m = re.search(rf"\bmodule\s+{name}\s*\(([^)]*)\)", text)
+        assert m, name
+        assert dev.terminals == tuple(t.strip() for t in m.group(1).split(",")), name
+        assert dev.params == tuple(p.lower() for p in re.findall(r"parameter\s+real\s+(\w+)", text)), name
+
+
+def test_va_device_text():
+    deck = netlist_to_deck(heater_mzi(eta_pi_per_W=10.0, loss_dBcm=None), PREFIX, va_devices=VA, params={"wl": 1.55})
+    assert f'load "{socklight.va_path("heater")}"' in deck.text.splitlines()
+    assert lines_of(deck, "model straight_heater_meander ") == ["model straight_heater_meander heater"]
+    # module terminal order; optical ports on the nets' I/Q pairs, electrical ports one node each
+    assert inst_line(deck, "top") == (
+        "top (n0_i n0_q n2_i n2_q top_l_e2 top_r_e2) straight_heater_meander eta_pi_per_w=10.0 length=320.0 wl=1.55"
+    )
+    assert deck.electrical == {"top": {"l_e2": "top_l_e2", "r_e2": "top_r_e2"}}
+    assert deck.dropped["straight_heater_meander"] == {"cross_section", "voltage"}  # loss_dBcm=None: omitted
+    assert "t_top_l_e2" not in deck.text and "t_top_r_e2" not in deck.text  # not terminated
+
+
+def test_va_device_variables():
+    deck = netlist_to_deck(heater_mzi(), PREFIX, va_devices=VA, variables=("wl",))
+    assert inst_line(deck, "top").endswith("straight_heater_meander length=320.0 wl=wl")
+
+
+def test_va_device_needs_no_registered_model():
+    models = {"coupler_ideal": "socklight.models:coupler_ideal", "straight": "socklight.models:straight"}
+    deck = netlist_to_deck(heater_mzi(), models, va_devices=VA)
+    assert "'socklight.models:straight_heater_meander'" not in deck.text
+
+
+def test_va_device_unknown_raises():
+    with pytest.raises(KeyError, match="nosuch"):
+        netlist_to_deck(heater_mzi(), PREFIX, va_devices={"straight_heater_meander": "nosuch"})
+
+
+def test_va_electrical_nets_and_external():
+    nl = {
+        "instances": {
+            "h1": {"component": "ht", "settings": {}},
+            "h2": {"component": "ht", "settings": {}},
+        },
+        "nets": [{"p1": "h1,r_e2", "p2": "h2,l_e2"}, {"p1": "h1,o2", "p2": "h2,o1"}],
+        "ports": {"o1": "h1,o1", "pad": "h1,l_e2"},
+    }
+    deck = netlist_to_deck(nl, PREFIX, va_devices={"ht": "heater"})
+    assert deck.electrical == {
+        "h1": {"l_e2": "pad", "r_e2": "n0"},
+        "h2": {"l_e2": "n0", "r_e2": "h2_r_e2"},
+    }
+    assert set(deck.external) == {"o1"}  # optical external ports only
+    assert inst_line(deck, "h1") == "h1 (o1_i o1_q n1_i n1_q pad n0) ht"
+    assert inst_line(deck, "h2") == "h2 (n1_i n1_q h2_o2_i h2_o2_q n0 h2_r_e2) ht"
+    # a VA device's dangling optical port is terminated as usual
+    assert lines_of(deck, "t_h2_o2 ") == ["t_h2_o2 (h2_o2_i h2_o2_q) optical_term"]
+
+
+def test_va_optical_to_electrical_net_raises():
+    nl = {
+        "instances": {"h": {"component": "ht", "settings": {}}, "s": {"component": "straight", "settings": {}}},
+        "nets": [{"p1": "h,l_e2", "p2": "s,o1"}],
+        "ports": {},
+    }
+    with pytest.raises(ValueError, match="electrical"):
+        netlist_to_deck(nl, PREFIX, va_devices={"ht": "heater"})
+
+
+def test_va_electrical_node_names_do_not_clash_with_optical():
+    # electrical node "a_i" must not alias the I node of optical external port "a"
+    nl = {
+        "instances": {"a": {"component": "ht", "settings": {}}},
+        "nets": [],
+        "ports": {"a": "a,o1", "a_i": "a,l_e2", "b": "a,o2"},
+    }
+    deck = netlist_to_deck(nl, PREFIX, va_devices={"ht": "heater"})
+    nodes = deck.electrical["a"]
+    assert nodes["l_e2"] not in {"a_i", "a_q", "b_i", "b_q"}
+    assert nodes["r_e2"] not in {"a_i", "a_q", "b_i", "b_q", nodes["l_e2"]}
+
+
+def heater_mzi_analytic(currents) -> dict[str, list[float]]:
+    """Detector powers of heater_mzi() driven at o1 with 1 W, heater current I (V = I R)."""
+    from socklight.models import STDLIB
+    from test_heater import R, t_of
+
+    sc = STDLIB["coupler_ideal"](coupling=0.5)
+    sw = STDLIB["straight"](length=320.0, neff=2.38)
+    c = lambda a, b: complex(sc[(a, b)])  # noqa: E731
+    out = {"o3": [], "o4": []}
+    for i in currents:
+        top = c("o4", "o1") * t_of(i * R)  # cp1,o4 -> top
+        bot = c("o3", "o1") * complex(sw[("o1", "o2")])  # cp1,o3 -> bot
+        out["o3"].append(abs(c("o3", "o1") * top + c("o3", "o2") * bot) ** 2)
+        out["o4"].append(abs(c("o4", "o1") * top + c("o4", "o2") * bot) ** 2)
+    return out
+
+
+def test_va_heater_mzi_native_current_sweep(run_op, vacask_mod_dir):
+    from conftest import analyse, elaborate
+
+    deck = netlist_to_deck(heater_mzi(), PREFIX, va_devices=VA, params={"wl": 1.55})
+    le, re_ = deck.electrical["top"]["l_e2"], deck.electrical["top"]["r_e2"]
+    text = drive(deck, "o1", terms=("o2",), pds=("o3", "o4")) + "\n".join([
+        "model isrc isource",
+        "model vsrc vsource",
+        f"ih (0 {le}) isrc dc=0",  # current into l_e2, through the heater, out of r_e2
+        f"vg ({re_} 0) vsrc dc=0",  # r_e2 to ground
+    ]) + "\n"
+    # The heater is nonlinear (its phase goes with V^2), so Newton iterates; at the default
+    # reltol (1e-3) a sweep point can stop with an error of ~1e-6..1e-4 in the optical nodes.
+    cir, _keep = elaborate(text, options={"reltol": 1e-9})
+    currents = [float(x) for x in np.linspace(0.0, 0.06, 121)]
+    res = analyse(cir, {"instance": "ih", "parameter": "dc", "values": currents})
+    want = heater_mzi_analytic(currents)
+    from test_heater import R
+
+    for k, i in enumerate(currents):
+        for p in ("o3", "o4"):
+            assert abs(res[f"det_{p}"][k] - want[p][k]) < TOL, (i, p, res[f"det_{p}"][k], want[p][k])
+        assert abs(res[le][k] - i * R) < 1e-9 * max(1.0, i * R)
+    # the sweep moves the outputs (not a constant)
+    assert max(want["o3"]) - min(want["o3"]) > 0.5
