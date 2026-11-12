@@ -196,8 +196,10 @@ socklight.register_models("cspdk.si220", cspdk.si220.models.get_models())
 - Numbers agree with sax under `jax_enable_x64` to rounding (`interpolate_xarray` included),
   except the MMIs away from `wl0`: socklight's `mmi1x2`/`mmi2x2` keep the Gaussian spectral
   response, where sax's normalisation cancels it at a scalar `wl` (VENDORED.md edit 11).
-  For cspdk si220, 150 of 164 model x cross-section cases match real jax to 4.5e-16; the 14 that
-  differ are the MMIs (and an MZI built from them) on the rib cross-sections.
+  For unmodified cspdk si220 (41 models, each on 4 cross-sections), 150 of 164 cases match real
+  jax/sax to 4.5e-16. The 14 that differ are `mmi1x2*`, `mmi2x2*` and `mzi_heater_loop` (which
+  contains MMIs) on the rib cross-sections, whose `wl0` is not the evaluated `wl`. An O-band MZI
+  built from the cspdk layout gives the same VACASK result with the shim as with real jax (2.2e-15).
 
 ## Errors
 
