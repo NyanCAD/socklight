@@ -59,6 +59,9 @@ shows how.
 - Every model parameter can be set on the `model` line or on an instance; the instance wins.
   A parameter you don't set takes the Python signature default. A parameter whose default is
   `None` is not passed to the model unless you set it.
+- Every numeric parameter is a real in the deck. One whose Python default is an `int` or `bool`
+  (e.g. `loss_dB_cm=3`) still accepts any real: the model gets an `int` when the value is
+  integral (`loss_db_cm=2` gives `2`) and a `float` otherwise (`loss_db_cm=2.5` gives `2.5`).
 - `socklight.va_path(name)` gives the Verilog-A helpers: `optical_source`, `optical_term`,
   `photodetector` and `heater` (see `docs/iq-convention.md`).
 

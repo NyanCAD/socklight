@@ -181,6 +181,9 @@ Per model, the descriptor is:
   port `p`, `p_i` then `p_q`. No internal nodes.
 - Parameters: from `inspect.signature`. A parameter whose default is a float/int is a
   real parameter; a str default is a string parameter; `wl` is a real parameter.
+  An int (or bool) default makes the registry kind "int", but VACASK still sees a real,
+  and any real value is accepted: the model gets `int(v)` when `v` is integral and
+  `float(v)` otherwise (upstream PDKs write `loss_dB_cm=3` for a real quantity).
   A parameter whose default is `None` (e.g. `mmi2x2`'s `loss_dB_cross`/`loss_dB_thru`)
   is an optional real parameter: passed to the model only when given, otherwise
   omitted so the model's own `None` handling applies. *(Builder-check call.)*

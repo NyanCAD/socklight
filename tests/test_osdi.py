@@ -98,6 +98,13 @@ def test_str_and_int_params(run_op, vacask_mod_dir):
     assert abs(wave(v, "aout1") - 0.5j) < TOL
 
 
+def test_int_param_takes_non_integral_value(run_op, vacask_mod_dir):
+    # ``n`` defaults to the int 1; 2.5 reaches the model as 2.5 (S[out1,in0] = 0.25j n).
+    ports = ("in0", "out0", "out1")
+    v = run_op(deck(vacask_mod_dir, {"sp": "'t.m:sorted_ports'"}, bench("a", "sp", ports, "n=2.5")))
+    assert abs(wave(v, "aout1") - 0.625j) < TOL
+
+
 def test_param_typo_is_parse_error(run_op, vacask_mod_dir):
     ports = ports_of(MMI2X2)
     with pytest.raises(VacaskError):

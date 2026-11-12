@@ -240,10 +240,16 @@ def test_array_entry_raises():
         _bridge.evaluate("a.b:arr", {})
 
 
-def test_non_integral_int_raises():
+def test_int_param_accepts_reals():
+    """An int-default parameter takes any real: int when integral, float otherwise."""
+    seen = {}
+
     def f(wl=1.55, n=3):
+        seen["n"] = n
         return {("a", "b"): 1.0}
 
     socklight.register("a.b:f", f)
-    with pytest.raises(ValueError, match="integer"):
-        _bridge.evaluate("a.b:f", {"n": 4.5})
+    _bridge.evaluate("a.b:f", {"n": 4.5})
+    assert seen["n"] == 4.5 and type(seen["n"]) is float
+    _bridge.evaluate("a.b:f", {"n": 4.0})
+    assert seen["n"] == 4 and type(seen["n"]) is int
