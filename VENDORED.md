@@ -28,3 +28,4 @@ Every vendored file begins with the `# MODIFIED:` header line.
 9. sax's pydantic type aliases (`FloatArrayLike`, `SDict`, ...) are plain annotations, so inputs are no longer validated or coerced.
 
 Docstring examples still refer to `sax.models.*`, `jax` plotting etc.; they are not executed.
+10. `_sax/ports.py`: default `PORT_NAMING_STRATEGY` changed from `"inout"` to `"optical"` (o1, o2, ...), as gdsfactory/cspdk use.

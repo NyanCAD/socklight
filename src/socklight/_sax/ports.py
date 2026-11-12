@@ -10,7 +10,7 @@ from ._compat import Name
 
 PortNamingStrategy: TypeAlias = Literal["optical", "inout"]
 
-PORT_NAMING_STRATEGY: PortNamingStrategy = "inout"
+PORT_NAMING_STRATEGY: PortNamingStrategy = "optical"
 
 
 def set_port_naming_strategy(strategy: PortNamingStrategy) -> PortNamingStrategy:
