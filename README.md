@@ -153,13 +153,51 @@ netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src 
   analysis.run(s)                               # writes op1.raw, one point per wavelength
   ```
 
-  Keep `tab`, `compiler` and `desc` referenced until the run is done: with vacask 0.3.4.dev6 the
-  circuit and the analysis do not keep them alive themselves.
 - Each net is one node pair `n<k>_i n<k>_q`. An external port `p` is `p_i p_q` (sanitized if `p`
   is not a VACASK identifier). An instance port that is on no net and not external is
   terminated with `optical_term`. The deck always loads it as model `optical_term`, so appended
   lines can use it.
 - The deck has no sources, detectors or analysis. Append them.
+
+## Running PDK models without jax
+
+PDK model code is usually written for sax: `import jax.numpy as jnp`, `import sax`,
+`@jax.jit`, `-> sax.SDict`. Where jax is not available (Pyodide), or to run without it,
+`socklight.compat.install()` serves those imports from numpy and socklight, so an unmodified
+model module imports and runs, and its models can be registered:
+
+```python
+import socklight.compat
+
+socklight.compat.install()          # before anything imports jax or sax
+
+import cspdk.si220.models           # unmodified upstream code
+socklight.register_models("cspdk.si220", cspdk.si220.models.get_models())
+```
+
+- `jax.numpy` *is* numpy, `jax.jit` returns the function unchanged, `jax.ensure_compile_time_eval`
+  is a null context and `jax.config.update` changes nothing (numpy computes in float64).
+  `jax.typing` and `jaxtyping` are annotations only.
+- `sax` has the type aliases (`SDict`, `SType`, `FloatArrayLike`, ...) as plain annotations, the
+  constants, `reciprocal`, `PortNamer`, `get/set_port_naming_strategy` and a numpy
+  `interpolate_xarray` (xarray itself is still needed for tables).
+- `sax.models` is socklight's stdlib (`socklight.models`). It follows the shim's port naming
+  strategy, which defaults to sax's `"inout"`; socklight's own registered stdlib keeps `o1, o2, ...`
+  whatever the PDK sets.
+- Not provided: `sax.circuit` (it raises `NotImplementedError`; circuits are VACASK's job, see
+  above), `jax.grad`, `vmap`, `lax`, `random`, `scipy`, `.at[]` updates, and sax's RF models. Any
+  other `jax.*`, `sax.*`, `jaxlib` or `klujax` import raises `ImportError`, and a missing
+  attribute raises `AttributeError` naming what is provided.
+- `install()` is opt-in: `import socklight` never touches jax or sax. It raises `RuntimeError`
+  if a real jax, jaxlib or sax is already imported, and is idempotent. While it is installed it
+  shadows an installed jax for every importer in the process. `uninstall()` removes it.
+- Numbers agree with sax under `jax_enable_x64` to rounding (`interpolate_xarray` included),
+  except the MMIs away from `wl0`: socklight's `mmi1x2`/`mmi2x2` keep the Gaussian spectral
+  response, where sax's normalisation cancels it at a scalar `wl` (VENDORED.md edit 11).
+  For unmodified cspdk si220 (41 models, each on 4 cross-sections), 150 of 164 cases match real
+  jax/sax to 4.5e-16. The 14 that differ are `mmi1x2*`, `mmi2x2*` and `mzi_heater_loop` (which
+  contains MMIs) on the rib cross-sections, whose `wl0` is not the evaluated `wl`. An O-band MZI
+  built from the cspdk layout gives the same VACASK result with the shim as with real jax (2.2e-15).
 
 ## Errors
 
