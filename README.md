@@ -59,6 +59,9 @@ shows how.
 - Every model parameter can be set on the `model` line or on an instance; the instance wins.
   A parameter you don't set takes the Python signature default. A parameter whose default is
   `None` is not passed to the model unless you set it.
+- Every numeric parameter is a real in the deck. One whose Python default is an `int` or `bool`
+  (e.g. `loss_dB_cm=3`) still accepts any real: the model gets an `int` when the value is
+  integral (`loss_db_cm=2` gives `2`) and a `float` otherwise (`loss_db_cm=2.5` gives `2.5`).
 - `socklight.va_path(name)` gives the Verilog-A helpers: `optical_source`, `optical_term`,
   `photodetector` and `heater` (see `docs/iq-convention.md`).
 
@@ -91,6 +94,72 @@ snapshots the registry once per process.
 - `register()` validates up front. It raises on a malformed name, a parameter without a
   default, two names or parameters that collide case-insensitively, and a probe call that
   fails.
+
+## From a gdsfactory netlist
+
+`socklight.netlist.netlist_to_deck` turns a flat netlist, as `Component.get_netlist()` returns it,
+into a deck. It imports neither gdsfactory nor sax.
+
+```python
+from socklight.netlist import netlist_to_deck
+
+socklight.register_models("cspdk.si220", PDK.models)  # before any deck loads socklight.osdi
+deck = netlist_to_deck(c.get_netlist(), "cspdk.si220", params={"wl": 1.31})
+i, q = deck.external["o1"]  # nodes of external port o1: append a source here
+netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src optical_source\n' \
+    + f"s1 ({i} {q}) src p=1\n"  # ...and terms or photodetectors on the other external ports
+```
+
+- `models` is a prefix (component `coupler` uses `"cspdk.si220:coupler"`) or a mapping from
+  component to registered name. A component without a registered model raises `KeyError`.
+- An instance's parameters are its `settings` with `info` merged over them, as `sax.circuit`
+  does. Keys that are not parameters of the model are left out and listed in `deck.dropped`
+  (layout-only settings such as `width` or `npoints` are normal there). `None` means "use the
+  model's default".
+- `params` go to every instance whose model has that parameter, unless the instance sets it
+  itself: the instance wins.
+- `variables=("wl",)` is `params` by reference: each instance whose model has `wl` (and does not
+  set it) gets `wl=wl`, a VACASK circuit variable, so a single sweep moves every instance. A name
+  in both `params` and `variables` raises `ValueError`. `deck.variables` lists them; declare each
+  one before elaboration or VACASK will not resolve it:
+
+  socklight runs inside a Python process, and VACASK's Python API ignores a deck's `control`
+  block, so declare and sweep the variable through the API:
+
+  ```python
+  from vacask import (Circuit, OpenvafCompiler, Parser, ParserTables, Status, Value,
+                      Analysis, PTAnalysis, PTSave, PTSweep, PV, simulator)
+
+  deck = netlist_to_deck(c.get_netlist(), "cspdk.si220", variables=("wl",))
+  text = deck.text + "..."  # append sources and detectors
+
+  simulator.setup()
+  s = Status()
+  tab = ParserTables("models")
+  Parser(tab).parseNetlistString(text)
+  tab.verify(s)
+  compiler = OpenvafCompiler()
+  cir = Circuit(tab, compiler, s)
+  cir.setVariable("wl", Value(1.55))           # before elaborate
+  cir.elaborate([], "__topdef__", "__topinst__", status=s)
+
+  desc = PTAnalysis("op1", "op")
+  sweep = PTSweep("s")
+  sweep.add(PV("variable", "wl"))
+  sweep.add(PV("values", [1.50, 1.52, 1.55, 1.58, 1.60]))
+  desc.add(sweep)
+  analysis = Analysis.create(desc, cir, s)
+  analysis.add(PTSave("default"))
+  analysis.run(s)                               # writes op1.raw, one point per wavelength
+  ```
+
+  Keep `tab`, `compiler` and `desc` referenced until the run is done: with vacask 0.3.4.dev6 the
+  circuit and the analysis do not keep them alive themselves.
+- Each net is one node pair `n<k>_i n<k>_q`. An external port `p` is `p_i p_q` (sanitized if `p`
+  is not a VACASK identifier). An instance port that is on no net and not external is
+  terminated with `optical_term`. The deck always loads it as model `optical_term`, so appended
+  lines can use it.
+- The deck has no sources, detectors or analysis. Append them.
 
 ## Errors
 

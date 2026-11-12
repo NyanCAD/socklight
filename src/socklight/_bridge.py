@@ -10,11 +10,13 @@ from . import registry
 
 __all__ = ["evaluate", "record_error", "set_load_error", "snapshot"]
 
-def _int(v: object) -> int:
-    if isinstance(v, float) and not v.is_integer():
-        msg = f"integer parameter got non-integral value {v!r}"
-        raise ValueError(msg)
-    return int(v)
+def _int(v: object) -> int | float:
+    """An "int" parameter (int or bool default) takes any real: ``int`` if integral, else ``float``.
+
+    Upstream PDKs use int defaults for real quantities (``loss_dB_cm=3``), so a deck may set 2.5.
+    """
+    v = float(v)
+    return int(v) if v.is_integer() else v
 
 
 _CAST = {"real": float, "int": _int, "str": str, "opt": float}
