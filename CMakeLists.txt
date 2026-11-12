@@ -61,7 +61,7 @@ else()
 endif()
 file(MAKE_DIRECTORY "${_va_out}")
 set(_va_osdi "")
-foreach(_name optical_source optical_term photodetector)
+foreach(_name optical_source optical_term photodetector heater)
   set(_src "${CMAKE_CURRENT_SOURCE_DIR}/va/${_name}.va")
   set(_dst "${_va_out}/${_name}.osdi")
   add_custom_command(

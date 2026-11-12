@@ -1,0 +1,43 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Thermal phase shifter on two I/Q optical ports (see docs/iq-convention.md):
+// reciprocal and reflectionless, S21 = S12 = T, with a resistive heater between
+// l_e2 and r_e2 that adds the phase pi * eta_pi_per_W * P_heater.
+//
+// The optical ports are written as scattering relations in terms of the port
+// currents I(o_k), V_k = I_k + T (V_j + I_j) for k != j (from V = a + b, I = a - b,
+// b_k = T a_j), split into I and Q. The equivalent admittance Y = (1 - S)(1 + S)^-1
+// would be singular at T = 1; this form is not.
+module heater(o1_i, o1_q, o2_i, o2_q, l_e2, r_e2);
+    inout o1_i, o1_q, o2_i, o2_q, l_e2, r_e2;
+    electrical o1_i, o1_q, o2_i, o2_q, l_e2, r_e2;
+    branch (l_e2, r_e2) bh;
+
+    (*desc= "Heater resistance per length", type="instance", units = "ohm/um"*) parameter real ohms_per_um = 0.375 from (0:inf);
+    (*desc= "Phase shift per heater power", type="instance", units = "pi/W"*)    parameter real eta_pi_per_W = 12.5;
+    (*desc= "Length", type="instance", units = "um"*)                             parameter real length = 320.0 from [0:inf);
+    (*desc= "Propagation loss", type="instance", units = "dB/cm"*)                parameter real loss_dBcm = 3.0;
+    (*desc= "Effective index at wl0", type="instance"*)                           parameter real neff0 = 2.38;
+    (*desc= "Group index at wl0", type="instance"*)                               parameter real ng = 4.30;
+    (*desc= "Reference wavelength", type="instance", units = "um"*)               parameter real wl0 = 1.55 from (0:inf);
+    (*desc= "Wavelength", type="instance", units = "um"*)                         parameter real wl = 1.55 from (0:inf);
+
+    real r, dphi, neff, phi, mag, tr, ti;
+
+    analog begin
+        r = ohms_per_um * length;
+        I(bh) <+ V(bh) / r;
+        dphi = `M_PI * eta_pi_per_W * V(bh) * V(bh) / r;
+        neff = neff0 - (wl - wl0) * (ng - neff0) / wl0;
+        phi = 2.0 * `M_PI * neff * length / wl + dphi;
+        mag = pow(10.0, -loss_dBcm * length / 1.0e4 / 20.0);
+        tr = mag * cos(phi);
+        ti = mag * sin(phi);
+
+        V(o1_i) <+ I(o1_i) + tr * (V(o2_i) + I(o2_i)) - ti * (V(o2_q) + I(o2_q));
+        V(o1_q) <+ I(o1_q) + tr * (V(o2_q) + I(o2_q)) + ti * (V(o2_i) + I(o2_i));
+        V(o2_i) <+ I(o2_i) + tr * (V(o1_i) + I(o1_i)) - ti * (V(o1_q) + I(o1_q));
+        V(o2_q) <+ I(o2_q) + tr * (V(o1_q) + I(o1_q)) + ti * (V(o1_i) + I(o1_i));
+    end
+endmodule
