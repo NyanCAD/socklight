@@ -159,6 +159,43 @@ netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src 
   lines can use it.
 - The deck has no sources, detectors or analysis. Append them.
 
+### Components as Verilog-A devices
+
+`va_devices` places one of socklight's Verilog-A devices (`socklight.netlist.VA_DEVICES`:
+`heater`, `photodetector`, `optical_source`, `optical_term`) for a component instead of a
+registered Python model. For example, cspdk's `straight_heater_meander` has an optical-only sax
+model, but socklight's `heater` also has its electrical pads:
+
+```python
+deck = netlist_to_deck(c.get_netlist(), "cspdk.si220", params={"wl": 1.55},
+                       va_devices={"straight_heater_meander": "heater"})
+le, re = deck.electrical["h_top"]["l_e2"], deck.electrical["h_top"]["r_e2"]
+text = deck.text + "\n".join([
+    "model isrc isource", "model vsrc vsource",
+    f"ih (0 {le}) isrc dc=0",   # current into l_e2; sweep instance=ih parameter=dc
+    f"vg ({re} 0) vsrc dc=0",   # r_e2 to ground
+]) + "\n"   # ...plus a source and detectors on deck.external, as above
+```
+
+- The deck loads `socklight.va_path(device)` and defines `model <component> <device>`.
+- Terminals follow the module's declaration order. A terminal pair `<p>_i`/`<p>_q` is optical port
+  `p`, wired like any other optical port (dangling: `optical_term`). Every other terminal is an
+  electrical port: one node, shared with the electrical ports on its nets (a net joining an
+  optical and an electrical port raises `ValueError`).
+- An electrical port on no net is named after its external port, if it has one, and otherwise
+  `<instance>_<port>`. It is **not** terminated: the caller drives it. `deck.electrical` maps
+  instance -> port -> node for every electrical port. `deck.external` lists optical ports only.
+  An electrical node needs a DC path to ground, so tie an undriven heater's pads to ground
+  (or across a 0 V `vsource`) rather than leaving them floating.
+- Settings (`info` over `settings`) and `params`/`variables` match the module's parameters
+  case-insensitively and are written lowercase (`eta_pi_per_W` -> `eta_pi_per_w`); the rest go to
+  `deck.dropped`. These components need no registered model.
+- The heater makes the circuit nonlinear (its phase goes with `V^2`), so VACASK's Newton solver
+  iterates, and at the default `reltol` (1e-3) a sweep point can stop with an optical error of
+  up to ~1e-4. Tighten it before elaborating, `cir.setOption("reltol", Value(1e-9))` (an
+  `options reltol=1e-9` line under the CLI), to get round-off-level results. Decks of only
+  registered (linear) models solve exactly either way.
+
 ## Running PDK models without jax
 
 PDK model code is usually written for sax: `import jax.numpy as jnp`, `import sax`,
