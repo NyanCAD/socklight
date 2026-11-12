@@ -153,8 +153,6 @@ netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src 
   analysis.run(s)                               # writes op1.raw, one point per wavelength
   ```
 
-  Keep `tab`, `compiler` and `desc` referenced until the run is done: with vacask 0.3.4.dev6 the
-  circuit and the analysis do not keep them alive themselves.
 - Each net is one node pair `n<k>_i n<k>_q`. An external port `p` is `p_i p_q` (sanitized if `p`
   is not a VACASK identifier). An instance port that is on no net and not external is
   terminated with `optical_term`. The deck always loads it as model `optical_term`, so appended
