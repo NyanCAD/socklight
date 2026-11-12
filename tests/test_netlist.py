@@ -96,6 +96,25 @@ def test_mzi_matches_analytic(run_op, wl):
     assert abs(v["det_o3"] - abs(want["o3"]) ** 2) < TOL
 
 
+def test_wl_circuit_variable_sweep(run_op):
+    # One native sweep over the circuit variable wl moves every instance (the CLI equivalent
+    # declares ``var wl=1.55`` in the control block; here Circuit.setVariable does it).
+    from conftest import analyse, elaborate
+
+    deck = netlist_to_deck(mzi(), PREFIX, variables=("wl",))
+    assert deck.variables == ("wl",)
+    cir, _keep = elaborate(drive(deck, "o1", terms=("o2", "o4"), pds=("o3",)), variables={"wl": 1.55})
+    wls = [1.50, 1.52, 1.55, 1.58, 1.60]
+    res = analyse(cir, {"variable": "wl", "values": wls})
+    assert len(res["det_o3"]) == len(wls)
+    for k, wl in enumerate(wls):
+        want = mzi_analytic(wl)
+        for p in ("o2", "o3", "o4"):
+            i, q = deck.external[p]
+            assert abs(complex(res[i][k], res[q][k]) - want[p]) < TOL, (wl, p)
+        assert abs(res["det_o3"][k] - abs(want["o3"]) ** 2) < TOL
+
+
 def test_dangling_port_terminated_in_vacask(run_op):
     # o2 of the straight is on no net and not external: the deck terminates it, so the run works
     nl = {"instances": {"s": {"component": "straight", "settings": {"length": 5.0}}}, "nets": [], "ports": {"a": "s,o1"}}
@@ -183,6 +202,22 @@ def test_global_params_fill_only_what_the_instance_left_unset():
     assert inst_line(deck, "top") == "top (n0_i n0_q n2_i n2_q) straight wl=1.3 length=10.0 loss_db_cm=2"
     assert inst_line(deck, "bot") == "bot (n1_i n1_q n3_i n3_q) straight wl=1.55 length=30.0 loss_db_cm=2"
     assert inst_line(deck, "cp1").endswith("coupler_ideal wl=1.55 coupling=0.3")
+
+
+def test_variables_emit_the_variable_name():
+    nl = mzi()
+    nl["instances"]["top"]["settings"]["wl"] = 1.3
+    deck = netlist_to_deck(nl, PREFIX, params={"loss_db_cm": 2}, variables=("wl", "nosuch"))
+    assert deck.variables == ("wl", "nosuch")
+    assert inst_line(deck, "top") == "top (n0_i n0_q n2_i n2_q) straight wl=1.3 length=10.0 loss_db_cm=2"
+    assert inst_line(deck, "bot") == "bot (n1_i n1_q n3_i n3_q) straight wl=wl length=30.0 loss_db_cm=2"
+    assert inst_line(deck, "cp1").endswith("coupler_ideal wl=wl coupling=0.3")
+    assert netlist_to_deck(mzi(), PREFIX).variables == ()
+
+
+def test_variable_also_in_params_raises():
+    with pytest.raises(ValueError, match="wl"):
+        netlist_to_deck(mzi(), PREFIX, params={"WL": 1.55}, variables=["wl"])
 
 
 @pytest.fixture

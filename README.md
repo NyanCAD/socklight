@@ -118,6 +118,25 @@ netlist = deck.text + f'load "{socklight.va_path("optical_source")}"\nmodel src 
   model's default".
 - `params` go to every instance whose model has that parameter, unless the instance sets it
   itself: the instance wins.
+- `variables=("wl",)` is `params` by reference: each instance whose model has `wl` (and does not
+  set it) gets `wl=wl`, a VACASK circuit variable, so a single sweep moves every instance. A name
+  in both `params` and `variables` raises `ValueError`. `deck.variables` lists them; declare each
+  one before elaboration or VACASK will not resolve it:
+
+  ```python
+  deck = netlist_to_deck(c.get_netlist(), "cspdk.si220", variables=("wl",))
+  # ...append sources and detectors, then the control block:
+  control = """
+  control
+    var wl=1.55
+    sweep s variable="wl" values=[1.50, 1.52, 1.55, 1.58, 1.60]
+    analysis op1 op
+  endc
+  """
+  ```
+
+  Through the Python API there is no control block: call `circuit.setVariable("wl", Value(1.55))`
+  before `circuit.elaborate`, then sweep with `PV("variable", "wl")` (see `tests/conftest.py`).
 - Each net is one node pair `n<k>_i n<k>_q`. An external port `p` is `p_i p_q` (sanitized if `p`
   is not a VACASK identifier). An instance port that is on no net and not external is
   terminated with `optical_term`. The deck always loads it as model `optical_term`, so appended

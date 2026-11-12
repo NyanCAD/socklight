@@ -13,6 +13,10 @@ Rules, chosen to match ``sax.circuit``:
   reported in ``Deck.dropped``; ``None`` values are omitted, so the model's default applies.
 - ``params`` (e.g. ``{"wl": 1.55}``) go to every instance whose model has that parameter
   (matched case-insensitively), except where the instance itself sets it: the instance wins.
+- ``variables`` (e.g. ``("wl",)``) works like ``params`` but writes the circuit variable's name
+  (``wl=wl``) instead of a value, so one ``sweep s variable="wl" values=[...]`` moves every
+  instance. The caller must declare each variable (``var wl=1.55`` in the control block)
+  before elaboration; a name in both ``params`` and ``variables`` raises ``ValueError``.
 - Values: bool -> 0/1, int -> int, other reals -> ``repr(float)`` (full precision),
   str -> a double-quoted VACASK string; anything else raises ``TypeError``.
 - Nodes: one I/Q pair per net (``n<k>_i n<k>_q``, k the net's index); an external port
@@ -29,7 +33,7 @@ from __future__ import annotations
 import math
 import numbers
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -51,6 +55,7 @@ class Deck:
     text: str  # a complete VACASK deck body: title, ground, loads, model lines, instances
     external: dict[str, tuple[str, str]]  # external port -> (i node, q node)
     dropped: dict[str, set[str]]  # component -> settings not passed (not model parameters)
+    variables: tuple[str, ...] = ()  # circuit variables the deck references: declare them (``var``)
 
 
 class _Names:
@@ -117,19 +122,28 @@ def netlist_to_deck(
     models: str | Mapping[str, str],
     *,
     params: Mapping[str, object] | None = None,
+    variables: Iterable[str] = (),
     title: str = "socklight netlist",
 ) -> Deck:
     """Converts a gdsfactory/sax flat netlist to a VACASK deck (see the module docstring).
 
     ``models`` is a prefix (``"cspdk.si220"``: component ``coupler`` uses the registered
     ``"cspdk.si220:coupler"``) or a mapping component -> registered name. The deck has no
-    analysis or control block, and drives nothing: append sources and detectors to
+    analysis or control block (``Deck.variables`` need declaring in one), and drives nothing: append sources and detectors to
     ``Deck.text`` using the nodes in ``Deck.external``.
     """
     import socklight
 
     instances: Mapping = netlist["instances"]
     glob = {str(k).lower(): v for k, v in (params or {}).items()}
+    if isinstance(variables, str):
+        variables = (variables,)
+    variables = tuple(variables)
+    var_of = {v.lower(): v for v in variables}
+    both = sorted(set(var_of) & set(glob))
+    if both:
+        msg = f"{both} are in both params and variables"
+        raise ValueError(msg)
 
     specs: dict[str, registry.ModelSpec] = {}
     for inst in instances.values():
@@ -217,11 +231,12 @@ def netlist_to_deck(
         for p in spec.params:
             if p.name not in given and p.name.lower() in glob and glob[p.name.lower()] is not None:
                 given[p.name] = glob[p.name.lower()]
-        rendered = [
-            f"{p.name.lower()}={_value(given[p.name], f'instance {name!r} setting {p.name!r}')}"
-            for p in spec.params
-            if p.name in given
-        ]
+        rendered = []
+        for p in spec.params:
+            if p.name in given:
+                rendered.append(f"{p.name.lower()}={_value(given[p.name], f'instance {name!r} setting {p.name!r}')}")
+            elif p.name.lower() in var_of:
+                rendered.append(f"{p.name.lower()}={var_of[p.name.lower()]}")
         terminals = []
         for port in spec.ports:
             root = find((name, port))
@@ -233,4 +248,4 @@ def netlist_to_deck(
         lines.append(" ".join([ident[name], f"({' '.join(terminals)})", local_of[comp], *rendered]))
     for tname, node in terms:
         lines.append(f"{inames(tname)} ({node}_i {node}_q) {TERM_MODEL}")
-    return Deck("\n".join(lines) + "\n", external, dropped)
+    return Deck("\n".join(lines) + "\n", external, dropped, variables)
