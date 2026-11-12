@@ -18,10 +18,11 @@ LENGTH = 320.0
 NEFF0 = 2.38
 
 
-def t_of(vh: float, loss_db_cm: float = LOSS_DB_CM) -> complex:
-    """Closed-form T of the default heater at wl = wl0 = 1.55."""
+def t_of(vh: float, loss_db_cm: float = LOSS_DB_CM, wl: float = 1.55, neff0: float = NEFF0) -> complex:
+    """Closed-form T of the heater (default parameters, wl0 = 1.55, ng = 4.30)."""
     dphi = math.pi * 12.5 * vh**2 / R
-    phi = 2 * math.pi * NEFF0 * LENGTH / 1.55 + dphi
+    neff = neff0 - (wl - 1.55) * (4.30 - neff0) / 1.55
+    phi = 2 * math.pi * neff * LENGTH / wl + dphi
     return 10 ** (-loss_db_cm * LENGTH / 1e4 / 20) * cmath.exp(1j * phi)
 
 
@@ -65,6 +66,7 @@ def test_heater_transmission(run_op, vacask_mod_dir, vh):
 def test_heater_reverse(run_op, vacask_mod_dir, vh):
     v = run_op(deck(vacask_mod_dir, *chain(vh, "o2")))
     assert abs(wave(v, "o1") - t_of(vh)) < 1e-9
+    assert abs(wave(v, "o2") - 1.0) < 1e-9  # S22 = 0
 
 
 def test_heater_no_reflection(run_op, vacask_mod_dir):
@@ -76,6 +78,19 @@ def test_heater_lossless_ok(run_op, vacask_mod_dir):
     v = run_op(deck(vacask_mod_dir, *chain(0.0, "o1", loss_dbcm=0)))
     assert abs(abs(wave(v, "o2")) - 1.0) < 1e-9
     assert abs(wave(v, "o2") - t_of(0.0, 0.0)) < 1e-9
+
+
+@pytest.mark.parametrize(("neff0", "sign"), [(490 * 1.55 / 320, 1.0), (490.5 * 1.55 / 320, -1.0)])
+def test_heater_lossless_exact_unity(run_op, vacask_mod_dir, neff0, sign):
+    """T = +1 and T = -1 exactly: Y = (1 - S)(1 + S)^-1 would be singular or zero here."""
+    v = run_op(deck(vacask_mod_dir, *chain(0.0, "o1", loss_dbcm=0, neff0=repr(neff0))))
+    assert abs(wave(v, "o2") - sign) < 1e-9
+    assert abs(wave(v, "o1") - 1.0) < 1e-9
+
+
+def test_heater_dispersion(run_op, vacask_mod_dir):
+    v = run_op(deck(vacask_mod_dir, *chain(1.0, "o1", wl=1.56)))
+    assert abs(wave(v, "o2") - t_of(1.0, wl=1.56)) < 1e-9
 
 
 def test_heater_electrical(run_op, vacask_mod_dir):

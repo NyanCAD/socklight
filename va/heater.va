@@ -16,7 +16,7 @@ module heater(o1_i, o1_q, o2_i, o2_q, l_e2, r_e2);
 
     (*desc= "Heater resistance per length", type="instance", units = "ohm/um"*) parameter real ohms_per_um = 0.375 from (0:inf);
     (*desc= "Phase shift per heater power", type="instance", units = "pi/W"*)    parameter real eta_pi_per_W = 12.5;
-    (*desc= "Length", type="instance", units = "um"*)                             parameter real length = 320.0 from [0:inf);
+    (*desc= "Length", type="instance", units = "um"*)                             parameter real length = 320.0 from (0:inf);
     (*desc= "Propagation loss", type="instance", units = "dB/cm"*)                parameter real loss_dBcm = 3.0;
     (*desc= "Effective index at wl0", type="instance"*)                           parameter real neff0 = 2.38;
     (*desc= "Group index at wl0", type="instance"*)                               parameter real ng = 4.30;
